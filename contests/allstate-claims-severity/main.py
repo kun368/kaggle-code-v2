@@ -2,21 +2,23 @@ from collections import Counter
 
 import numpy as np
 import pandas as pd
-from xgboost import XGBRegressor
 from lightgbm import LGBMRegressor
 from scipy import stats
-from sklearn.metrics import mean_squared_error
-from sklearn.preprocessing import LabelEncoder
+from sklearn.compose import TransformedTargetRegressor
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OrdinalEncoder, FunctionTransformer
 
 train = pd.read_csv('datas/train.csv')
-test = pd.read_csv('datas/test.csv')
+pred = pd.read_csv('datas/test.csv')
 
 # basic information
 train.info()
-test.info()
+pred.info()
 
 print(np.any(pd.isna(train).values))
-print(np.any(pd.isna(test).values))
+print(np.any(pd.isna(pred).values))
 
 # data distribution
 for i in train.columns:
@@ -26,29 +28,30 @@ for i in train.columns:
 print(np.std(train['loss']), stats.skew(train['loss']))
 print(np.std(np.log(train['loss'])), stats.skew(np.log(train['loss'])))
 
-
 # training prep
 
-def prep(df):
-    id = df['id'].values
-    for i in train.columns:
-        if i == 'id' or i == 'loss':
-            continue
-        if str(i).startswith('cat'):
-            df[i] = LabelEncoder().fit_transform(df[i])
-    x = train.drop(columns=['id', 'loss']).values
-    y = np.log(train['loss'].values)
-    return id, x, y
+pipe = Pipeline(steps=[
+    ('feature_select', FunctionTransformer(lambda x: x.drop(columns=['id', 'loss'], errors='ignore'))),
+    ('ord_encoder', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=np.nan)),
+    ('model', LGBMRegressor(silent=False, n_estimators=500, max_depth=10)),
+])
+pipe = TransformedTargetRegressor(regressor=pipe, func=np.log, inverse_func=np.exp)
+print(pipe.get_params())
 
+train, test = train_test_split(train, test_size=0.2, random_state=41)
+pipe.fit(train, train['loss'])
+test_y = test['loss']
+test_m = pipe.predict(test)
 
-train_id, train_x, train_y = prep(train)
+print([round(i, 2) for i in test_y[:10].values])
+print([round(i, 2) for i in test_m[:10]])
+print(r2_score(test_y, test_m))
+print(mean_absolute_error(test_y, test_m))
+print(mean_squared_error(test_y, test_m, squared=True))
 
-# training
-# model = XGBRegressor(verbosity=2)
-model = LGBMRegressor(silent=False, n_estimators=300)
-model.fit(train_x, train_y)
-
-train_pred = model.predict(train_x)
-print(train_y[:10])
-print(train_pred[:10])
-print(mean_squared_error(train_y, train_pred))
+pred_m = pipe.predict(pred)
+submit = []
+for (id, y) in zip(pred['id'], pred_m):
+    submit.append({'id': id, 'loss': y})
+# noinspection PyTypeChecker
+pd.DataFrame(submit).to_csv('submit.csv', index=False)
