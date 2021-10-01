@@ -10,11 +10,11 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OrdinalEncoder, FunctionTransformer
 
-from utils import files
+from utils import common
 
-train = files.compress_read('datas/train.csv')
-pred = files.compress_read('datas/test.csv')
-sample_submit = files.compress_read('datas/sample_submission.csv')
+train = common.compress_read('data/train.csv')
+pred = common.compress_read('data/test.csv')
+sample_submit = common.compress_read('data/sample_submission.csv')
 
 # basic information
 train.info()
