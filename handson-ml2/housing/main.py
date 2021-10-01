@@ -1,7 +1,8 @@
 from collections import Counter
-import pandas as pd
-from utils import common
+
 import matplotlib.pyplot as plt
+
+from utils import common
 
 housing = common.compress_read('data/housing.csv')
 housing.info()
@@ -16,3 +17,6 @@ print(housing.describe().T)
 
 housing.hist(bins=50, figsize=(20, 15))
 plt.savefig('plots/hist.svg')
+
+housing.plot(kind='scatter', x='longitude', y='latitude', alpha=0.1)
+plt.savefig('plots/location_scatter.svg')
