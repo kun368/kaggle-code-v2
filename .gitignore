@@ -6,3 +6,6 @@
 *.zip
 *.tar.gz
 *.svg
+*.png
+*.jpg
+*.joblib
