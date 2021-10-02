@@ -9,7 +9,7 @@ def set_pandas_option():
     pd.set_option('max_colwidth', 100)
 
 
-def compress_read(f):
+def compress_read(f) -> pd.DataFrame:
     parquet_file = f.replace('.csv', '.parquet')
     if str(f).endswith('.csv') and path.exists(f):
         pd.read_csv(f).to_parquet(parquet_file, compression='brotli')
