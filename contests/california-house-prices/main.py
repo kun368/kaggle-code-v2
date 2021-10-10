@@ -1,16 +1,13 @@
-from collections import Counter
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from lightgbm import LGBMRegressor
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
-from sklearn.impute import SimpleImputer
 from sklearn.metrics import mean_squared_error
-from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.model_selection import train_test_split, cross_validate
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler, OrdinalEncoder
+from sklearn.preprocessing import OrdinalEncoder, FunctionTransformer
 
 from utils.common import compress_read, set_pandas_option
 
@@ -27,11 +24,6 @@ start_train_df.info()
 
 print('------------------------------ data distribution ------------------------------')
 train_df = start_train_df.copy()
-
-for i in train_df.columns:
-    counter = Counter(train_df[i].values)
-    print(i, len(counter.keys()), counter.most_common(5))
-
 train_df.sample(n=1000).to_excel('sample_data.xlsx', index=False)
 
 train_df.hist(bins=50, figsize=(20, 15))
@@ -73,17 +65,20 @@ class TimeFeatures(BaseEstimator, TransformerMixin):
     def transform(self, X, y=None):
         ret_x = pd.DataFrame()
         for i in time_features:
-            ret_x[str(i) + ' ' + 'Year'] = pd.to_datetime(X[i]).dt.year
+            cur = pd.to_datetime(X[i]).dt
+            ret_x[str(i) + ' ' + 'Year'] = cur.year
+            ret_x[str(i) + ' ' + 'Month'] = cur.month
+            ret_x[str(i) + ' ' + 'Day'] = cur.day
+            ret_x[str(i) + ' ' + 'Quarter'] = cur.quarter
+            ret_x[str(i) + ' ' + 'DaysInMonth'] = cur.daysinmonth
+            ret_x[str(i) + ' ' + 'Sec'] = cur.microsecond // 10 ** 9
         return ret_x
 
 
 pipe = Pipeline([
-    ('imputer_3', SimpleImputer(missing_values=np.nan, strategy='constant', fill_value=0)),
-    ('imputer_1', SimpleImputer(missing_values='None', strategy='constant', fill_value=0)),
-    ('imputer_2', SimpleImputer(missing_values='', strategy='constant', fill_value=0)),
     ('trans', ColumnTransformer([
         ('num', Pipeline([
-            ('std_scalar', StandardScaler())
+            ('empty', FunctionTransformer())
         ]), num_features),
         ('cat', Pipeline([
             ('oh', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1))
@@ -92,7 +87,7 @@ pipe = Pipeline([
             ('tm', TimeFeatures())
         ]), time_features),
     ])),
-    ('reg', LGBMRegressor(silent=False, zero_as_missing=True)),
+    ('reg', LGBMRegressor(silent=True, n_estimators=500)),
 ])
 print(pipe.get_params())
 pipe.fit(train_features, train_label)
@@ -100,6 +95,32 @@ print([round(i, 2) for i in train_label[:10]])
 print([round(i, 2) for i in pipe.predict(train_features[:10])])
 print(mean_squared_error(train_label, pipe.predict(train_features), squared=False))
 
-scores = cross_val_score(pipe, train_features, train_label, scoring='neg_mean_squared_error', cv=5)
+cv_results = cross_validate(pipe, train_features, train_label,
+                            scoring='neg_mean_squared_error', cv=5, return_estimator=True)
+scores = cv_results["test_score"]
 scores = np.sqrt(-scores)
 print(np.mean(scores), np.std(scores), list(scores))
+
+best_estimator = cv_results['estimator'][list(scores).index(min(scores))]
+
+print('------------------------------ search parameters ------------------------------')
+test_df = start_test_df.copy()
+test_id = test_df['Id'].values
+test_label = test_df['Sold Price'].values
+test_features = pd.DataFrame(test_df.drop(columns=['Id']))
+test_result = best_estimator.predict(test_features)
+
+print([round(i, 2) for i in test_label[:10]])
+print([round(i, 2) for i in test_result[:10]])
+print(mean_squared_error(test_label, test_result, squared=False))
+
+print('------------------------------ submit ------------------------------')
+pred_id = pred['Id'].values
+pred_features = pd.DataFrame(pred.drop(columns=['Id']))
+print(pred_id.shape, pred_features.shape)
+
+submit = []
+for (id, y) in zip(pred_id, best_estimator.predict(pred_features)):
+    submit.append({'Id': id, 'Sold Price': y})
+# noinspection PyTypeChecker
+pd.DataFrame(submit).to_csv('submit.csv', index=False)
