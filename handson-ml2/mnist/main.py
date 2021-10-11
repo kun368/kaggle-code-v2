@@ -23,18 +23,32 @@ if __name__ == '__main__':
     print(X.shape, y.shape)
 
     show_image(X.iloc[0].values)
-    X_train, X_test = X[:60000], X[60000:]
-    y_train, y_test = y[:60000], y[60000:]
+    train_size = 60000
+    X_train, X_test = X[:train_size], X[train_size:]
+    y_train, y_test = y[:train_size], y[train_size:]
 
-    model = KNeighborsClassifier()
+    model = KNeighborsClassifier(n_jobs=-1)
+    parameters = {
+        'n_neighbors': (1, 3, 5, 10, 20),
+        'weights': ('uniform', 'distance')
+    }
+    search = GridSearchCV(model, parameters, cv=3,
+                          scoring='accuracy',
+                          verbose=4, return_train_score=True)
+    search.fit(X_train.values, y_train)
+    print(search.best_params_)
+    cv_res = search.cv_results_
+    for mean_score, params in zip(cv_res['mean_test_score'], cv_res['params']):
+        print(mean_score, params)
+    model = search.best_estimator_
 
-    train_res = cross_val_predict(model, X_train, y_train, cv=3)
-    print(list(y_train)[:10])
-    print(list(train_res)[:10])
-    print(classification_report(y_train, train_res, digits=3))
+    # train_res = cross_val_predict(model, X_train, y_train, cv=3)
+    # print(list(y_train)[:10])
+    # print(list(train_res)[:10])
+    # print(classification_report(y_train, train_res, digits=3))
+    # model.fit(X_train, y_train)
 
-    model.fit(X_train, y_train)
-    test_res = model.predict(X_test)
+    test_res = model.predict(X_test.values)
     print(list(y_test)[:10])
     print(list(test_res)[:10])
     print(classification_report(y_test, test_res, digits=3))
