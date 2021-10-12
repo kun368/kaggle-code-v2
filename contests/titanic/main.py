@@ -1,11 +1,15 @@
 from collections import Counter
 
+import numpy as np
 from lightgbm import LGBMClassifier
 from matplotlib import pyplot as plt
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.ensemble import VotingClassifier
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split, cross_val_predict
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from xgboost import XGBClassifier
 
 from utils.common import *
 
@@ -46,12 +50,13 @@ class FeatureAdder(BaseEstimator, TransformerMixin):
         self.drop_cols = ['Name', 'Ticket', 'Cabin']
         self.one_hot_cols = ['Sex', 'Embarked']
         self.one_hot_cats = dict()
+        self.age_mean = 0.0
 
     def fit(self, X, y=None):
         for c in self.one_hot_cols:
             X[c] = X[c].astype('category').cat.as_ordered()
             self.one_hot_cats[c] = X[c].cat.categories
-        print(self.one_hot_cats)
+        self.age_mean = np.mean(X['Age'])
         return self
 
     def transform(self, X, y=None):
@@ -59,17 +64,37 @@ class FeatureAdder(BaseEstimator, TransformerMixin):
         for c in self.one_hot_cols:
             X[c] = pd.Categorical(X[c], categories=self.one_hot_cats[c], ordered=True)
             X[c] = X[c].cat.codes
+        X['Age'] = X['Age'].fillna(value=self.age_mean)
+        X['Cabin'] = X['Cabin'].fillna(value='')
+
         X['AgeClass1'] = X['Age'] // 10
         X['AgeClass2'] = X['Age'] // 25
         X['FareClass'] = X['Fare'] // 30
+        X['HaveSib'] = X['SibSp'] != 0
+        X['HasCabinInfo'] = X['Cabin'].apply(lambda x: x != '')
+        X['ClassOfCabin'] = X['Cabin'].apply(lambda x: np.nan if x == '' else ord(str(x)[0]) - ord('A'))
+        X['FamilySize'] = X['SibSp'] + X['Parch']
+        X['FamilyBring'] = X['Parch'] - X['SibSp']
         X.drop(columns=self.drop_cols, inplace=True)
+        X.to_excel('sample_features.xlsx')
         return X
 
 
 pipe = Pipeline([
     ('feature_adder', FeatureAdder()),
-    ('reg', LGBMClassifier(silent=True, n_estimators=30)),
+    ('std_scalar', StandardScaler()),
+    ('vt', VotingClassifier(estimators=[
+        ('xgb', XGBClassifier(verbosity=0, n_estimators=30)),
+        ('lgbm', LGBMClassifier(silent=True, n_estimators=30)),
+    ]))
 ])
 print(pipe.get_params())
-train_res = cross_val_predict(pipe, train_features, y=train_label, cv=3, verbose=4)
+train_res = cross_val_predict(pipe, train_features, y=train_label, cv=5, verbose=4)
 print(classification_report(train_label, train_res, digits=4))
+
+print('------------------------------ submit ------------------------------')
+pipe.fit(train_features, y=train_label)
+pred_id = pred['PassengerId'].values
+pred_features = pd.DataFrame(pred.drop(columns=['PassengerId']))
+# noinspection PyTypeChecker
+pd.DataFrame({'PassengerId': pred_id, 'Survived': pipe.predict(pred_features)}).to_csv('submit.csv', index=False)
