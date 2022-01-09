@@ -1,3 +1,6 @@
+from collections import OrderedDict
+
+
 class Summer:
     def __init__(self):
         self.sum_num = 0.0
@@ -16,3 +19,60 @@ class Summer:
 
     def __str__(self):
         return "{:.4f}".format(self.sum_num / self.sum_weight)
+
+
+class MultiSummer:
+    def __init__(self):
+        self.summers = OrderedDict()
+
+    def put(self, key, num, weight=1.0):
+        if key not in self.summers:
+            self.summers[key] = Summer()
+        self.summers[key].add(num, weight)
+
+    def get(self, key):
+        return self.summers.get(key, Summer())
+
+
+def set_seeds(seed=42):
+    import tensorflow as tf
+    import os
+    import numpy as np
+    import random
+
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    random.seed(seed)
+    tf.random.set_seed(seed)
+    np.random.seed(seed)
+
+
+def show_one_image(image):
+    import matplotlib.pyplot as plt
+    plt.figure(figsize=(3, 3))
+    plt.imshow(image)
+    plt.show()
+
+
+class Timer:
+    def __init__(self):
+        self.times = []
+        self.start()
+
+    def start(self):
+        import time
+        self.tik = time.time()
+
+    def stop(self):
+        import time
+        self.times.append(time.time() - self.tik)
+        return self.times[-1]
+
+    def avg(self):
+        return sum(self.times) / len(self.times)
+
+    def sum(self):
+        return sum(self.times)
+
+    def cumsum(self):
+        import numpy as np
+        return np.array(self.times).cumsum().tolist()
