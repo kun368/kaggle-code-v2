@@ -76,3 +76,14 @@ class Timer:
     def cumsum(self):
         import numpy as np
         return np.array(self.times).cumsum().tolist()
+
+
+def to_kaggle_submission(submission, out_zip='submission.zip'):
+    import pandas as pd
+    import zipfile
+    import os
+
+    pd.DataFrame(submission).to_csv('submission.csv', index=False)
+    with zipfile.ZipFile(out_zip, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.write('submission.csv', arcname='submission.csv')
+    os.remove('submission.csv')
