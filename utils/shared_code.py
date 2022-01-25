@@ -33,6 +33,9 @@ class MultiSummer:
     def get(self, key):
         return self.summers.get(key, Summer())
 
+    def __str__(self):
+        return ' '.join([f'{k}: {v}' for k, v in self.summers.items()])
+
 
 def set_seeds(seed=42):
     import tensorflow as tf
